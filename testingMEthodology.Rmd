@@ -1,0 +1,596 @@
+---
+title: "tests"
+author: "LGatarek"
+date: "30 marca 2017"
+output:
+  pdf_document: default
+  includes:
+    in_header: mystyles.sty
+  html_document: default
+  word_document: null
+header-includes: null
+---
+
+
+
+```{r setup trueX, include=FALSE}
+setwd("C:/Users/lgatarek/Dropbox/Rcodes/monteCarloMethodsWithR")
+knitr::opts_chunk$set(echo = TRUE)
+source("hierarchicalLinearModelForMarkDown.R")
+```
+
+## Specyfikacja modelu
+Specyfikacja statystyczna, którą stosujemy, opiera się na metodologii zaproponowanej w artykule Gelfand, Hills, Racine-Poon, Smith (1990). Model ten należy klasyfikować jako model z kategorii modeli danych panelowych. Specyfiką modelu panelowego jest fakt analizowania danych zarówno w kontekście przekrojowym jak i w zakresie szeregu czasowego. Model, który stosujemy zakłada istnienie zależności w postaci liniowej pomiędzy zmienną objaśnianą $Y$ oraz zmiennymi objaśniającymi $X$. Zarówno zmienna $Y$ jak i $X$ są mierzone dla $i \in 1,\ldots,n$ obiektów w kolejnych momentach czasu w okresie obejmującym $j \in 1,\ldots,m$ pomiarów. W przypadku jednej zmiennej objaśniającej specyfikacja modelu zakłada jednakową wariancję dla wszystkich zmiennych $Y_i$ w modelu oraz istnienie parametrów $\alpha_i$ oraz $\beta_i$ specyficznych dla każdego obiektu
+$$Y_{i,j} \sim N(\alpha_i + \beta_i x_{i,j}, \sigma^{2}).$$
+Jednocześnie specyfikacja ekonometryczna modelu zakłada, iż obiekty mają cechy wspólne. Ten cel jest osiągnięty przez założenie, iż parametry modelu pochodzą z tej samej populacji o rokładzie normalnym 
+$$\theta_i=
+\begin{bmatrix}{}
+\alpha_i \\
+\beta_i
+\end{bmatrix}
+\sim N(\theta_0, \Sigma),
+$$
+gdzie 
+$$\theta_0 =
+\begin{bmatrix}{}
+\alpha_0 \\
+\beta_0
+\end{bmatrix}
+$$
+a macierz $\Sigma$ jest macierzą kowariancji dla zmiennych $\theta_i$.
+
+Szacowanie tego modelu jest niełatwe ze względu na strukturę hierarchiczną. Struktura ta wynika z występowania hierarchi równań w specyfikacji modelu. Główne równanie modelu jest typowym modelem w postaci regresyjnej. Opisuje rozkład obserwacji w formie rozkładu normalnego, gdzie wartość oczekiwana tego rozkładu parametryzowana jest przez parametry $\theta_i$. Parametry te również modelowane są za pomoca rozkładu normalnego. Ich rozkład parametryzowany jest hyperparametrami $theta_0$. Hierarchiczność powoduje, iż obserwacje są pośrednio modelowane przez parametry $\theta_0$, chociaż nie wystepują one bezpośrednio w głównym równaniu modelu. Jest to widoczne przez następującą specyfikację
+$$
+Y_{i,j} = 
+\begin{bmatrix}{}
+1 &
+x_{i,j}
+\end{bmatrix}
+\begin{bmatrix}{}
+\alpha_i \\ \beta_i
+\end{bmatrix}
++ \epsilon_{i,j} =  
+\begin{bmatrix}{}
+1 &
+x_{i,j}
+\end{bmatrix}
+\theta_i
++ \epsilon_{i,j},
+\ \epsilon_{i,j} \sim N(0, \sigma^{2}),
+$$
+$$
+\theta_0=\eta + \xi, \ \xi \sim N(0, C).
+$$
+
+Używanie metod ekonometrii klasycznej w celu oszacowania tego typu modelu jest trudne i opierałoby się na procedurach kilkustopniowej estymacji. Dlatego w pracy zastosujemy metody Bayesowskie.
+
+Wnioskowanie Bayesowskie w ekonometrii wywodzi się ze szkoły pojmowania prawdopodobieństwa, której autorem jest Thomas Bayes. Zgodnie z tą szkołą, prawdopodobieństwo (bezwarunkowe, tzw. *a priori*) wystąpienia zdarzenia losowego jest niczym innym jak miarą racjonalnego przekonania, że dane zdarzenie wystąpi. Chcąc zmienić (zmodyfikować, wzbogacić) nasze przekonania wykonujemy eksperymenty (obserwacje) dotyczące interesującego nas zdarzenia. Wyniki badań przekształcają prawdopodobieństwo *a priori* (wstępne oczekiwania) w tzw. prawdopodobieństwo *a posteriori* (prawdopodobieństwo wynikowe, miara racjonalnego oczekiwania wystąpienia zdarzenia po uzyskaniu wyników badań).
+
+
+Logika tej reguły wnioskowania statystycznego opisana jest formułą
+$$a\ posteriori \propto a\ priori\ x\ funkcja\ wiarygodności,$$ gdzie znak $\propto$ oznacza proporcjonalność. Wynikiem wnioskowania Bayesowskiego jest próba z rozkładu *a posteriori*. Rozkład ten uzyskujemy na podstawie iloczynu rozkładu *a priori* oraz funkcji wiarygodności. 
+
+
+W celu przeprowadzenia analizy Bayesowskiej powyższego modelu należy zdefiniować rozkłady *a priori*. W tym modelu Gelfand et al. (1990) specyfikują rokłady *a priori* dla parametrów $\sigma^2, \theta_0, \Sigma$ następującej postaci:
+$$\sigma^2|a,b \sim IG(a,b),$$
+$$\theta_0|\eta,C\sim N(\eta, C),$$
+$$\Sigma|\rho,R\sim IW(\rho R, \rho).$$ 
+$IG$ oznacza odwrotny rozkład gamma z parametrem kształtu $a>0$ oraz parametrem skali $b>0$. $IW$ oznacza odwrotny rozkład Wisharta z parametrami. 
+
+Tego typu modele były analizowane Bayesowsko pierwotnie przez Lindley, Smith (1971). Autorzy otrzymali rokłady warunkowe parametrów w tym modelu. Korzystając z wyników ich badań Gelfand et al. (1990) zapopornował schemat losujący umożliwiający implementację metod symulacyjnych do analizy kładu parametrów modelu.
+
+## Schemat symulacyjny Gibbsa dla modelu
+Standardowo w analizie Bayesowskiej określamy funkcję prawdopodbieństwa *a posteriori* jako iloczyn funkcji wiarygodności w modelu oraz rozkładów *a priori*. Funkcja wiarygodności w analizowanym modelu określona jest zgodnie z formułą 
+$$
+L = \prod_{i=1}^{n} p(y_{i} | X_{i},\theta_{i})p(\theta_i|\theta_0, \Sigma^{-1}).
+$$
+Funkcja składa się z dwóch komponentów za względu na hierarchiczną strukturę modelu, który analizujemy. Zgodnie z hierarchią, pierwszy komponent w powyższej funkcji odnosi się do głównego równania w modelu opisującego rozkład obserwacji. Drugi komponent odnosi się do równania opisującego parametry modelu w stosunku od wspólnych parametrów $\theta_0$ oraz $\Sigma$.
+
+W celu uproszczenia notacji Wprowadzimy oznaczenie $\Gamma \equiv \left[ {\theta_i},\theta_0,\Sigma^{-1},\sigma^2 \right]$ odnoszące się do wszystkich parametrów w modelu. Przy prezentowaniu rozkładów warunkowych dla parametrów posługujemy się notacją $\Gamma_{-p}$, aby oznaczyć zbiór wszystkich parametrów oprócz parametru $p$.
+
+Bazując na powyższych definicjach Rozkład *a posteriori* w modelu dany jest formułą
+$$
+p(\Gamma|y) = \left[\prod_{i=1}^{n} p(y_{i} | X_{i},\theta_{i})p(\theta_i|\theta_0, \Sigma^{-1})\right]
+p(\theta_0|\eta,C) p(\sigma^2|a,b)p(\Sigma^{-1}|\rho,R),
+$$
+gdzie rozkłady *a priori* określone są zgodnie ze specyfikacją modelu. 
+
+Efektem szacowania modelu w ujęciu Bayesowskim jest otrzymanie próby z rozkładu *a posteriori* dla parametrów modelu. Jako, iż forma łącznego rozkładu *a posteriori* dla całej grupy parametrów, jaką otrzymaliśmy wyżej, nie należy do znanej grupy rozkładów, nie możemy skorzystać ze wzorów analitycznych w celu wyznaczenia prawdopodobieństwa dla każdej z realizacji parametrów. W celu otrzymania próby, zaimplementujemy Bayesowski schemat obliczeniowy dla modelu zaprezentowanego wyżej. 
+
+W większości przypadków pracy z danymi eksperymentalnymi, otrzymanie rozkładu *a posteriori* w postaci analitycznej zgodnej ze znanymi klasami rozkładów, jest zadaniem miełatwym lub nieosiągalnym. Pewne analityczne metody – oparte na koncepcji sprzężonych rozkładów apriorycznych – miały bardzo duże znaczenie w statystyce Bayesowskiej przed upowszechnieniem się komputerów. Rozkłady sprzężone posiadają tą własność, że rozkłady *a posteriori* należą do tej samej rodziny funkcji rozkładu co rozkłady *a priori*, natomiast parametry tych rozkładów (apriorycznego i końcowego – *a posteriori*) będą różne. Rolą Bayesowskiej funkcji wiarygodności jest tu uaktualnienie apriorycznych parametrów modelu, przy zachowaniu jego funkcjonalnej postaci.
+
+Mimo prostoty modelu, z którym pracujemy, rozkład *a posteriori*, którą otrzymaliśmy, nie należy do żadnej znanej klasy rozkładów. Niie możemy również zastosować do niego teorii rozkładów sprzężonych. Zastosujemy wnioskowanie oparte na metodzie symulacji Monte Carlo – tzw. MCMC (ang. Markov Chain Monte Carlo – metoda Monte Carlo przy użyciu łańcuchów Markowa). Metoda MCMC pozwala wygenerować listę wartości wartości próbkując rozkład *a posteriori* w sposób sekwencyjny.
+
+Metoda ta (MCMC) jest najpowszechniej stosowaną obecnie techniką próbkowania wyżej wymiarowych przestrzeni parametrów. W skrócie: jej idea polega na znalezieniu takiego sposobu eksploracji przestrzeni parametrów (operacyjnie – ciągu punktów), że po dostatecznie długim czasie podróży, czyli dla dostatecznie dużej liczby iteracji, prawdopodobieństwo, iż znajdujemy się w punkcie $\theta$ jest proporcjonalne do $p(\theta)$, czyli do wartości próbkowanej gęstości prawdopodobieństwa w tym punkcie. Jeżeli reguła przejścia od $\theta$ w iteracji $k$, oznaczone przez $\theta(k)$ do nowej wartości $\theta$, w iteracji $k+1$,  zależy jedynie od obecnej wartości $\theta$ a nie od poprzednich iteracji, wówczas ciąg generowany taką regułą iteracyjną nazywamy łańcuchem Markowa (ang. Markov Chain). Aby taki ciąg – łańcuch Markowa, miał pożądane własności graniczne prawdopodobieństwo dojścia do punktu $\theta$ musi być równe gęstości próbkowanego prawdopodobieństwa w tym punkcie.
+
+Zastosujemy jedną z najbardziej standardowych metody symulacyjnych w ekonometrii Bayesowskiej, próbnik Gibbsa. 
+Zdefiniujemy próbnik Gibbsa na przykładzie rozważanego modelu hierarchicznego.
+
+Korzystając z wcześniej wprowadzonych oznaczeń zmiennych, rozważmy zmienną losową $\Gamma \equiv \left[ {\theta_i},\theta_0,\Sigma^{-1},\sigma^2 \right]$ o gęstości $p\left({\theta_i},\theta_0,\Sigma^{-1},\sigma^2\right)$.
+Załóżmy, że umiemy losować zmienne jednowymiarowe o gęstości warunkowych 
+$$
+p({\theta_i}|\Gamma_{-{\theta_i}}),
+$$
+$$
+p(\theta_0|\Gamma_{-{\theta_0}}),
+$$
+$$
+p(\Sigma^{-1}|\Gamma_{-{\Sigma^{-1}}}),
+$$
+$$
+p(\sigma^{2}|\Gamma_{-{\sigma^{2}}}).
+$$
+Generujemy ciąg wektorów losowych $\Gamma(0), \Gamma(1),\ldots,Gamma(k)\ldots$.
+Jeżeli $\Gamma(k)=\left [ {\theta_i},\theta_0,\Sigma^{-1},\sigma^2 \right ]$ oznaczymy jako $\Gamma$, to $\Gamma(k+1)=\left [ {\theta_i}',\theta_0',\Sigma^{-1}',\sigma^2' \right ]=\Gamma'$ losujemy w następujących krokach
+$$
+{\theta_i'} \sim \theta_0,\Sigma^{-1},\sigma^2,
+$$
+$$
+\theta_0' \sim {\theta_i}',\Sigma^{-1},\sigma^2,
+$$
+$$
+\Sigma^{-1}' \sim {\theta_i}',\theta_0',\sigma^2,
+$$
+$$
+\sigma^{2}' \sim {\theta_i}',\theta_0',\Sigma^{-1}'.
+$$
+Wtedy, przy pewnych założeniach co do rozkładku $p\left({\theta_i},\theta_0,\Sigma^{-1},\sigma^2\right)$, otrzymany empirycznie rozkład $\Gamma(k)$ zbiega do prawdziwego rozkładu $p\left({\theta_i},\theta_0,\Sigma^{-1},\sigma^2\right)$.
+
+Powyższy algorytm działa w oparciu o rozkłady warunkowe parametrów. W celu otrzymania formuł dla odpowiednich rozkładów warunkowych, należy określić formę analiytyczną tych rozkładów. Analiza Bayesowska przy użyciu metod symulacyjnych wymaga specyfikacji rozkładów warunkowych dla każdego parametru w modelu. Każdy z tych rozkładów jest rozkładem specyfikującym rozkład danego parametru warunkując na wartości innych parametrów. W ten sposób uzyskyje się schemat iterayjny. Próbkując z rozkładów warunkowych w sposób sekwencyjny, otrzymujemy próbkę z łącznego kładu parametrów w modelu. 
+
+## Rozkłady warunkowe parametrów modelu
+
+Używając metodologii Lindley, Smith (1971) stwierdzamy, iż rokład $Y_{i,j}$ wynikający z hierarchi rozkładów normalnych tym modelu, dany jest przez następujący rozkład normalny 
+$$ y_{i,j}\sim N\left(
+\begin{bmatrix}{}
+1 &
+x_{i,j}
+\end{bmatrix}
+\theta_0, \ 
+\sigma^2  + 
+\begin{bmatrix}{}
+1 &
+x_{i,j}
+\end{bmatrix}
+\Sigma
+\begin{bmatrix}{}
+1 \\
+x_{i,j}
+\end{bmatrix}\right).
+$$
+Rokład parametru $\theta_i$ w tak wyspecyfikowanym modelu dany jest rozkładem
+$$
+\theta_i \sim N \left(D_{\theta_i} d_{\theta_i}, D_{\theta_i}\right), \ i \in (1,\ldots,n),
+$$
+gdzie
+$$ 
+D_{\theta_i} = \left(X_i'X_i/\sigma^2 + \Sigma^{-1}\right)^(-1),\ 
+d_{\theta_i} = X_{i}'y_i/\sigma^2 + \Sigma^{-1}\theta_0
+$$
+z obserwacjami ułożonymi w następujących macierzach
+$$
+y_i = 
+\begin{bmatrix}{}
+y_{i1}\\
+y_{i2}\\
+\vdots\\
+y_{im}
+\end{bmatrix}
+$$,
+$$
+X_i = 
+\begin{bmatrix}{}
+1 & x_{i1}\\
+1 & x_{i2}\\
+\ldots\\
+1 & x_{im}
+\end{bmatrix},
+$$
+w przypadku jednej zmiennej wyjaśniającej. Rozszerzenie do przypadku wielu zmiennych jest trywialne. Wyżej zaprezentowany kład $\theta_i$ opiera się na dowodzie przedstawionym w artykule Lindley, Smith (1971). 
+
+Biorąc pod uwagę konstrukcję macierzy $D_{\theta_i}$ oraz $d_{\theta_i}$, warunkowa wartość oczekiwana rozkładu $\theta_i$ może być interpretowana jako średnia ważona estymatora otrzymanego za pomocą Metody Najmniejszych Kwadratów (MNK) dla danego obiektu $i$, czyli $(X_i'X_i)^{-1} X_i' y_i$, oraz wspólnej dla wszystkich parametrów wartości oczekiwanej $\theta_0$. W ten sposób estymator zawiera w sobie informację uzyskaną w próbie dla danego obiektu jak i informacje uzyskaną przekrojowa dla całej próby. Ponadto, zakładając, iż $\Sigma^{-1}\rightarrow 0$, przyjmując, iż inne zmienne mają określoną wartość, warunkowa wartość oczekiwana w rozkładzie *a posteriori* zbiega do estymatora MNK. Wynika to z faktu, iż $\Sigma^{-1}\approx 0$ implikuje wysoką wariancję w drugim równaniu rozpatrywanego modelu hierarchicznego. W takim wypadku, informacja płynąca z wartości oczekiwanej parametrów $\theta_0$ jest mało wartościowa ze względu na wysokie prawdopdoboeństwo realizacji parametrów $\theta_i$ odległych od $\theta_0$, co powoduje, że większa waga będzie położona na estymator MNK otrzymany dla danych dotyczących indywidualnego obiektu.
+
+Bayesowski schemat losowania wymaga kolejno rozkładu warunkowego dla parametru $\theta_0$. Gelfand et al. (1990) definiują ten rozkład jako rozkład normalny następującej postaci
+$$
+\theta_0|\Gamma_{-\theta_0},y \sim N(D_{\theta_0}d_{\theta_0}, D_{\theta_0}), 
+$$
+gdzie
+$$D_{\theta_0} = \left( n \Sigma^{-1} + C^{-1} \right)^{-1}$$ oraz $$d_{\theta_0} =  n \Sigma^{-1} \bar{\theta}+ C^{-1}\eta,$$ 
+przy zdefiniowanym $\bar{\theta}=\frac{1}{n}\sum_{i=1}^{n} \theta_i$. Podobnie jak w przypadku rozkładu warunkowego dla $\theta_i$ przeprowadzimy krótka interpretację tego rozkładu. Zauważmy, iż wybierając wysokie wariancje w $C$, a zatem $C^{-1}$ bardzo małe, warunkowa wartość oczekiwana dla $\theta_0$, określona przez $D_{\theta_0}d_{\theta_0}$ redukuje się do średniej obliczonej dla wszystkich $\theta_i$. W tym wypadku, indiwidualne parametry $\theta_i$ są bliskie średniej wartości, uzyskanej dla wszystkich obiektów.
+
+Pełna specyfikacja rozkładów warunkowych koniecznych w celu zdefiniowana schematu losowania wymaga również określenia rozkładów warunkowych dla parametrów $\sigma^2$ oraz $\Sigma$. Dla $\sigma^2$ Gelfand et al. (1990) otrzymują rozkład odwrotny gamma o następującej specyfikacji
+$$
+\sigma^2|\Gamma_{-\sigma^2}, y \sim IG\left(N/2 + a, \left[1/2\sum_{i=1}^{n}(y_i - X_i \theta_i)'(y_i - X_i \theta_i) + b^{-1}\right]^{-1} \right),
+$$
+where $N = n*m$.
+
+Dla $\Sigma$ uzyskany został rozkład Wisharta
+$$
+\Sigma^{-1}|\Gamma_{-\Sigma^{-1}}, y \sim W\left(\left[\sum_{i=1}^{n}(\theta_i-theta_0)(\theta_i-\theta_0)' + \rho R\right]^{-1}, n + \rho \right).
+$$
+Warunkowa wartość oczekiwana zmiennej $\Sigma^{-1}$ dla niskich wartości $\rho$ jest dana przez 
+$$n\left[\sum_{i=1}^{n}(\theta_i-theta_0)(\theta_i-\theta_0)'\right]^{-1}$$, zatem $$E(\Sigma) \approx n\left[\sum_{i=1}^{n}(\theta_i-theta_0)(\theta_i-\theta_0)'\right].$$ W tym wypadku, jeżeli informacja z rozkładu *a priori* nie jest informatywna w stosunku do informacji uzyskanej z próby, warunkowa wartość oczekiwana rozkładu *a posteriori* macierzy $\Sigma$ jest bliska wariancji indywidualnych parametrów $\theta_i$ wokół wspólnej średniej $\theta_0$.
+
+## Szacowanie modelu na sztucznie wysymylowanych danych
+w celu przeprowadzenia analizy działania metody szacowania modelu opartej na Bayesowskim schemacie losowania, tworzymy sztuczną próbkę danych w postaci macierzy obserwacji utożsamiających odpowiednio $y_i$ oraz $X_i$ dla $i \in 1,ldots,n$. W celu stworzenia próby musimy przyjąć założenia co do zbioru hyperparametrów definiujących rozkłady *a priori*. Wymagane jest okreslenie parametrów: $a,b,\eta,C,\rho,R$. Przyjmujemy następujące wartości parametrów:
+$$\eta=
+\begin{bmatrix}{}
+100 \\
+15
+\end{bmatrix},\ 
+C=
+\begin{bmatrix}{}
+40^2 & 0\\
+0 & 10^2
+\end{bmatrix},\ 
+\rho=5,\   
+R=
+\begin{bmatrix}{}
+10^2 & 0\\
+0 & 0.5^2
+\end{bmatrix},\ 
+a=3,\ 
+b=1/40.$$
+Powyższe hyperparametry definiują rozkłady *a priori* dla parametrów modelu. Używając w ten sposób zdefiniowanych rozkładów, losujemy wartości parametrów $\sigma^2, \theta_0$ oraz $\Sigma$. W następnym kroku losujemy parametry $\theta_i$ dla każdego $i \in 1,\ldots,n$. Używając tych parametrów oraz parametru $\sigma^2$, transformujemy (symulowane z rozkładu $N(0,1)$) obserwacje $X$, otrzymując obserwacje $y$, których rozkład jest zgodny z rozkładem  
+$$ y_{i,j}\sim N\left(
+\begin{bmatrix}{}
+1 &
+x_{i,j}
+\end{bmatrix}
+\theta_0, \ 
+\sigma^2  + 
+\begin{bmatrix}{}
+1 &
+x_{i,j}
+\end{bmatrix}
+\Sigma
+\begin{bmatrix}{}
+1 \\
+x_{i,j}
+\end{bmatrix}\right).
+$$
+Poniższy skrypt został użyty do wygenerowania próby losowej obejmującej macierze $X$ oraz $Y$ zgodnie z wyżej opisanym schematem z $n=30$ oraz $m=5$. Założenie krótkich szeregów czasowych określonych przez niską wartość parametru $m$ jest związane z długością szeregów danych, które podlegają analizie w części empirycznej. Celem eksperymentu symulacyjnego jest sprawdzenie właściwości estymatorów w warunkach zbliżonych do warunków określonych przez dane rzeczywiste.
+
+```{r eval = FALSE, echo = TRUE}
+## symulowanie danych zgodnie z procesem generujący dane
+# parametry dla rozkładu prior dla parametru theta_0
+eta <- matrix(NA, 2, 1)
+eta[1, 1] <- 100
+eta[2, 1] <- 15
+
+C <- matrix(0, 2, 2)
+C[1,1] <- 40^2
+C[2,2] <- 10^2
+
+# parametry dla rozkładu prior dla parametru Sigma
+rho <- 5
+R <- matrix(0, 2, 2)
+R[1,1] <-10^2
+R[2,2] <- .5^2
+
+# parametry dla rozkładu prior dla parametru sigma2
+a <-3
+b <- 1/40
+
+# liczba obiektów
+n <- 30
+# ilość pomiarów dla każdego z obiektów
+m <- 5
+# wymiar zmiennej objaśniającej, wliczając parametr stałej
+d <- 2
+
+# losowanie parametrów procesu generującego dane z odpowiednich rozkładów a priori
+trueSIGMA <- riwish(v = rho, S = rho * R)
+trueTheta0 <- mvrnorm(n = 1, mu = eta, Sigma = C)
+trueSigma2 <- rinvgamma(1, a, b)
+
+# losowanie parametrów theta_i
+trueTheta <- array(NA, dim = c(n, d, 1))
+for (i in 1:n){
+  trueTheta[i,,] <- mvrnorm(n = 1, mu = trueTheta0, Sigma = trueSIGMA) }
+
+# obserwacje X_{i,m}
+for (i in 1:n){
+  for (j in 1:m){  
+  trueX[i, j] <- rnorm(1,0,1) } }
+
+# obserwacje Y zgodnie z procesem generującym dane 
+Y <- matrix(NA, n, m)
+trueAlpha <- matrix(NA, n, 1)
+trueBeta <- matrix(NA, n, 1)
+
+for (i in 1:n){
+  trueAlpha[i,1] <- trueTheta[i,1,1]
+  trueBeta[i,1] <- trueTheta[i,2,1]
+  for (j in 1:m){
+    Y[i,j] <- rnorm(1, trueAlpha[i,1] + trueBeta[i,1] * trueX[i,j], trueSigma2)
+  }
+}
+```
+Macierz kowariancji rozkładu parametru $\theta_0$ została dobrana w ten sposób, aby umożliwić wysoki stopień rozproszenia wokół wartości oczekiwanej $\eta$. Dla rozkładu Wisharta założyliśmy $\rho=5$, aby umożliwić zróżnicowanie zarówno w parametrach $\alpha$ jak i $\beta$ w grupie obiektów, dla których symulujemy pomiary. Dla parametru wariancji $\sigma^2$ dobrano hyperparametry w ten sposób, aby wartość oczekiwana i odchylenie standardowe rozkładu *a priori* były równe $20$. Taki rozkład będzie generował dane o wysokim rozproszeniu. 
+
+Bazując na powyższych wartościach hyperparametrów, próbkując z odpowiednich rozkładów *a priori* otrzymujemy wartości parametrów $\theta, \theta_0, \sigma^2$ oraz $\Sigma$, które stanowią podstawę procesu generującego dane.
+
+Parametry $\theta_i$, ktore otrzymaliśmy dla procesu generującego dane, przedstawiamy w tabeli poniżej.
+```{r eval = TRUE, echo = FALSE}
+library(knitr)
+# thetas (alphas n plus betas n) + eta (2) + sigma2 (1) + Sigma (4)
+dgpThetaValues<-matrix(NA, n + 1 ,2)
+for (i in 1: n){
+  #alphas
+  dgpThetaValues[i,1] <- trueTheta[i,1,1]
+  #betas
+  dgpThetaValues[i,2] <- trueTheta[i,2,1]
+}
+ dgpThetaValues[n+1,1] <- trueTheta0[1]
+ dgpThetaValues[n+1,2] <- trueTheta0[2]
+ 
+rownames(dgpThetaValues) <- c(objectNames, 'theta_0')
+kable(dgpThetaValues, col.names=c('alpha_i', 'beta_i'), row.names = TRUE, caption = 'Tabela 1. Sztucznie wysymulowane wartości para  metrów theta_i dla procesu generującego dane', padding =2)
+```
+
+Poza tym otrzymaliśmy nastepujące wartości wariancji i kowariancji definiujące proces generujący dane: $\sigma^2$ = `r trueSigma2`, $\Sigma_{1,1}=$ `r trueSIGMA[1,1]`, $\Sigma_{1,2}=$ `r trueSIGMA[1,2]` oraz $\Sigma_{2,2}=$ `r trueSIGMA[2,2]`. Przyjmując te wartości parametrów otrzymaliśmy obserwacje $X$ oraz $Y$ przedstawione na wykresach 1 oraz 2.
+
+```{r eval = TRUE, echo = FALSE}
+matplot(trueX, type="l", main = expression(x))
+```
+*Wykres 1. Sztucznie wysymulowane dane: zmienna X.*
+```{r eval = TRUE, echo = FALSE}
+matplot(Y, type="l", main = expression(Y))
+```
+*Wykres 2. Sztucznie wysymulowane dane: zmienna Y.*
+```{r eval = TRUE, echo = FALSE}
+library(knitr)
+
+#kable(trueX, col.names=c('pomiar 1', 'pomiar 2', 'pomiar 3', 'pomiar 4', 'pomiar 5'), row.names = TRUE, caption = 'Sztucznie wysymulowane obserwacje X', padding =2)
+
+#kable(Y, col.names=c('pomiar 1', 'pomiar 2', 'pomiar 3', 'pomiar 4', 'pomiar 5'), row.names = TRUE, caption = 'Obserwacje Y uzyskane zgodnie z procesem generującym dane', padding =2)
+
+```
+
+## Bayesowski schemat symulacyjny
+W następnym kroku zaimplementujemy Bayesowski schemat obliczeniowy dla modelu hierarchicznego zaprezentowanego wyżej bazując na próbce danych wysmyluowanych na podstawie procesu generującego dane opartego na tym modelu. Celem tej analizy jest uzsykanie rozkładów \texit{a posteriori} dla parametrów modelu oraz weryfikacja czy metoda estymacji, którą zastosujemy do danych rzeczywistych jest w stanie odzyskać z danych parametry procesu generującego dane, które założyliśmy.
+
+Otrzymanie rozkładu \textit{a posteriori} jest zadaniem mietrywialnym. Pewne analityczne metody – oparte na koncepcji sprzężonych rozkładów apriorycznych – miały bardzo duże znaczenie w statystyce Bayesowskiej przed upowszechnieniem się komputerów. Rozkłady sprzężone posiadają tą własność, że rozkłady \textit{a posteriori} należą do tej samej rodziny funkcji rozkładu co rozkład \textit{a priori}. Oczywiście konkretne parametry tych rozkładów (apriorycznego i końcowego – \textit{a posteriori}) będą różne. Rolą Bayesowskiej funkcji wiarygodności jest tu uaktualnienie apriorycznych parametrów modelu, przy zachowaniu jego funkcjonalnej postaci.
+
+
+Klasa rozkładu, z którą mamy do czynienia w przypadku omawianego modelu hierarchicznego, jest na tyle skomplikowana, iż nie możemy zastosować do niej teorii rozkładów sprzęzonych. Zastosujemy wnioskowanie oparte na metodzie symulacji Monte Carlo – tzw. MCMC (ang. Markov Chain Monte Carlo – metoda Monte Carlo przy użyciu łańcuchów Markowa). Metoda MCMC pozwala wygenerować listę wartości wartości próbkując rozkład \textit{a posteriori} w sposób sekwencyjny.
+
+
+Metoda ta (MCMC) jest najpowszechniej stosowaną obecnie techniką próbkowania wyżej wymiarowych przestrzeni parametrów. W skrócie: jej idea polega na znalezieniu takiego sposobu eksploracji przestrzeni parametrów (operacyjnie – ciągu punktów) że po dostatecznie długim czasie podróży, czyli dla dostatecznie dużej liczby iteracji, prawdopodobieństwo, iż znajdujemy się w punkcie $\theta$ jest proporcjonalne do $p(\theta)$, czyli do wartości próbkowanej gęstości prawdopodobieństwa w tym punkcie. Jeżeli reguła przejścia od $\theta$ w iteracji $k$, oznaczone przez $\theta(k)$ do nowej wartości $\theta$, w iteracji $k+1$,  zależy jedynie od obecnej wartości $\theta$ a nie od poprzednich iteracji, wówczas ciąg generowany taką regułą iteracyjną nazywamy łańcuchem Markowa (ang. Markov Chain). Aby taki ciąg – łańcuch Markowa, miał pożądane własności graniczne prawdopodobieństwo dojścia do punktu $\theta$ musi być równe gęstości próbkowanego prawdopodobieństwa w tym punkcie.
+
+
+TO DO: moze na poczatku dodac def bayesizmu
+
+
+Rozkłady warunkowe dla parametrów przedstawione wyżej zostają zestawione w jeden schemat losujący. Parametry są losowane sekwencyjnie. Zaczynamy od alokacji pamięci przez poniższy skrypt.
+```{r eval = FALSE, echo = TRUE}
+#################
+# zakładamy ilość symulacji w łańcuchu MCMC
+nSim <- 100000
+# alokujemy pamięć pod wyniki losowania ...
+SIGMA <- array(data = NA, dim = c(nSim, d, d))
+theta0 <- array(data = NA, dim = c(nSim, d, 1))
+theta <- array(data = NA, dim = c(nSim, d, n))
+sigma2 <- matrix(data = NA, nSim, 1)
+# ... oraz pod dodatkowe zmienne konieczne do losowania
+thetaBar <- array(data = NA, dim = c(nSim, d, 1))
+squares <- rep(NA, n)
+thetaSquares <- vector(mode="list", length = n)
+#################
+```
+NAstępnie otrzymujemy z rozkładów \textit{a priori} wartości początkowe, które wystartują schemat losujący.
+```{r eval = FALSE, echo = TRUE}
+# wartości początkowe
+SIGMA[1,,] <- riwish(v = rho, S = rho * R)
+theta0[1,,] <- mvrnorm(n = 1, mu = eta, Sigma = C)
+sigma2[1] <- rinvgamma(1, a, b)
+```
+Otrzymaliśmy następujące wartości początkowe z rozkładów \textit{a priori}. Dla macierzy kowariancji $\Sigma$ wartości wynoszą kolejno $\Sigma_{1,1}=$ `r SIGMA[1,1,1]`, $\Sigma_{1,2}=$ `r SIGMA[1,1,2]` oraz $\Sigma_{2,2}=$ `r SIGMA[1,2,2]`. Dla wariancji $\sigma^2$ otrzymaliśmy wartość 'r sigma2[a]'. Dla $\theta_0$ otrzymaliśmy kolejno $\alpha_0 =$ `r theta0[1,1,]` oraz $\beta_0=$ `r theta0[1,2,]`.
+
+Jesteśmy gotowi do uruchomienia skryptu symulacyjnego MCMC. Poniższy skrypt implementuje formuły przedstawione w częsci teoretycznej. W pierwszym kroku symulujemy parametry w $theta_i$ dla każdego $i \ in (1,\ldots,n)$. Następnie korzystając z rozkładu warunkowego $\theta_0$ w stosunku do $\theta_i$ symulujemy wartości dla parametrów $\alpha_0$ oraz $beta_0$. Następnie losowane są wartości $\sigma^2$ oraz macierzy kowariancji $\Sigma$. To zamyka jedno wykonanie schematu symulacyjnego MCMC. Całość powatarzamy `r nSim` razy. Poniższy skrypt jest implementacją opisanego schematu losowania.
+
+```{r eval = FALSE, echo = TRUE}
+for (t in 2:nSim){
+  for (i in 1:n){
+    # warunkowy rozkład a posteriori dla theta_i
+    X_i <- cbind(rep(1, m), trueX[i,])
+    # page 175
+    D_theta_i <- ginv( t(X_i) %*% X_i / sigma2[t-1] + ginv(SIGMA[t-1,,]) )
+    d_theta_i <- t(X_i) %*% matrix(Y[i,]) / sigma2[t-1] + ginv(SIGMA[t-1,,]) %*% matrix(theta0[t-1,,])
+    
+    theta[t,,i] <- mvrnorm(n = 1, mu = D_theta_i %*% d_theta_i, Sigma = D_theta_i)
+  }
+  # warunkowy rozkład a posteriori dla  theta_0
+  D_theta_0 <- ginv(n * ginv(SIGMA[t-1,,]) + ginv(C))
+  # średnia dla theta_i's
+  thetaBar[t,,] = apply(theta[t,,], 1, mean)
+  d_theta_0 <- (n * ginv(SIGMA[t-1,,]) %*% thetaBar[t,,] + ginv(C) %*% eta)
+  theta0[t,,1] <- mvrnorm(n = 1, mu = D_theta_0 %*% d_theta_0, Sigma = D_theta_0)
+  
+  # warunkowy rozkład a posteriori dla sigma2
+  for (i in 1:n){
+    X_i <- cbind(rep(1, m), trueX[i,])  
+    squares[i] <- t(matrix(Y[i,]) - X_i %*% matrix(theta[t,,i])) %*% (matrix(Y[i,]) - X_i %*% matrix(theta[t,,i]) )
+    }
+  sigma2[t] <- rinvgamma(1, (m * n)/2 + a, ginv( 1/2 * sum(squares) + b^(-1)  ) )
+
+  # warunkowy rozkład a posteriori dla  Sigma
+  for (i in 1:n){
+    thetaSquares[[i]] <- matrix(theta[t,,i] - theta0[t,,1]) %*% t(matrix(theta[t,,i] - theta0[t,,1]))
+  }
+  SIGMA[t,,] <- riwish(v = n + rho, S = Reduce("+", thetaSquares )  + rho * R )
+}
+```
+Celem wykonania powyższego ćwiczenia jest sprawdzenie w jakim stopniu schamet symulacyjny jest w stanie odzyskać wartości procesu generującego dane, jaki przyjęliśmy. Analizując wyniki działania algorytmu skupimy się na tym zagadnieniu, ale również krytycznie spojrzymy na własności statystyczne łańcuchów wysymulowanych przez schemat losujący.
+
+Na wykresie 3 przedstawiamy rozkłady parametrów uzyskane przez schemat symulacyjny. Na każdym rozkładzie, pionową kreską, zaznaczamy prawdziwą wartośc parametru, założoną w procesie generującym dane. 
+
+W tabeli 2 przedstawiamy prawdziwe wartości parametrów procesu, wraz ze średnimi wartościami uzyskanymi dla rozkładu kazdego z parametrów przez schemat symulacyjny oraz percentyl rozkładu, w którym znajduje się prawdziwa wartość parametru.
+
+```{r eval = TRUE, echo = FALSE, fig.width = 13, fig.height = 18}
+# run the file that corresponds to the simulation study
+# source("hierarchicalLinearModel.R")
+#par(mfrow = c(6, 3), mar = c(2, 1, 1, 1))
+par(mfrow = c(11, 3), pin = c(0.6, 0.3), mar = c(1.5, 0.5, 2.5, 2.5))
+for (i in 1:n){
+  hist(theta[(nSim/10):nSim,1,i], col = "grey", breaks = 25, xlab = "", 
+       main = paste(expression(alpha_), toString(i)), fre = F, xlim=c( min(min(theta[(nSim/10):nSim,1,i]), trueTheta[i,1,1]), max(max(theta[(nSim/10):nSim,1,i]), trueTheta[i,1,1]) )  )
+  abline(v = trueTheta[i,1,1], lwd = 5, col = 'red')
+}
+
+for (i in 1:n){
+  hist(theta[(nSim/10):nSim,2,i], col = "grey", breaks = 25, xlab = "", 
+       main = paste(expression(beta_), toString(i)), fre = F, xlim=c( min(min(theta[(nSim/10):nSim,2,i]), trueTheta[i,2,1]), max(max(theta[(nSim/10):nSim,2,i]), trueTheta[i,2,1])   ))
+  abline(v = trueTheta[i,2,1], lwd = 5, col = 'red')
+}
+
+hist(theta0[(nSim/10):nSim,1,1], col = "grey", breaks = 25, xlab = "", 
+     main = expression(alpha_0), fre = F)
+abline(v = trueTheta0[1], lwd = 5, col = 'red')
+
+hist(theta0[(nSim/10):nSim,2,1], col = "grey", breaks = 25, xlab = "", 
+     main = expression(beta_0), fre = F)
+abline(v = trueTheta0[2], lwd = 5, col = 'red')
+
+hist(sigma2[(nSim/10):nSim], col = "grey", breaks = 25, xlab = "", 
+     main = expression(sigma^2), fre = F)
+abline(v = trueSigma2, lwd = 5, col = 'red')
+
+
+# SIGMA
+hist(SIGMA[(nSim/10):nSim,1,1], col = "grey", breaks = 25, xlab = "", 
+     main = expression(SIGMA_1_1), fre = F)
+abline(v = trueSIGMA[1,1], lwd = 5, col = 'red')
+
+hist(SIGMA[(nSim/10):nSim,1,2], col = "grey", breaks = 25, xlab = "", 
+     main = expression(SIGMA_1_2), fre = F)
+abline(v = trueSIGMA[1,2], lwd = 5, col = 'red')
+
+hist(SIGMA[(nSim/10):nSim,2,2], col = "grey", breaks = 25, xlab = "", 
+     main = expression(SIGMA_2_2), fre = F)
+abline(v = trueSIGMA[2,2], lwd = 5, col = 'red')
+```
+$$
+$$
+*Wykres 3. Histogramy przedstawiający rozkłady parametrów modelu otrzymane próbnikiem Gibbsa.*
+$$
+$$
+
+```{r eval = TRUE, echo = FALSE}
+library(knitr)
+summaryPosteriors<-matrix(NA, n+n+6, 4)
+# alphas
+parameterNames<-NULL
+for (i in 1:n){
+  # true value of the parameter
+  summaryPosteriors[i,1]<-trueTheta[i,1,1]
+  # mean of posterior 
+  summaryPosteriors[i,2]<-mean(theta[ (nSim/2+1):nSim ,1,i])
+  # st dev of posterior 
+  summaryPosteriors[i,3]<-sd(theta[ (nSim/2+1):nSim ,1,i])
+  # quantile
+  Fn<-ecdf(theta[ (nSim/2+1):nSim ,1,i])
+  summaryPosteriors[i,4] <- round(Fn(trueTheta[i,1,1]), 2)
+  parameterNames <- c(parameterNames, paste(expression(alpha), toString(i)) )
+}
+# betas
+for (i in (n+1):(2*n)){
+  # true value of the parameter
+  summaryPosteriors[i,1]<-trueTheta[i-n,2,1]
+  # mean of posterior 
+  summaryPosteriors[i,2]<-mean(theta[(nSim/2+1):nSim,2,i-n])
+  # st dev of posterior 
+  summaryPosteriors[i,3]<-sd(theta[(nSim/2+1):nSim,2,i-n])
+  # quantile
+  Fn<-ecdf(theta[(nSim/2+1):nSim,2,i-n])
+  summaryPosteriors[i,4] <- round(Fn(trueTheta[i-n,2,1]), 2)
+  parameterNames<-c(parameterNames, paste(expression(beta), toString(i-n)) )
+  }
+#alpha0
+  # true value of the parameter
+  summaryPosteriors[2*n+1,1]<-trueTheta0[1]
+  # mean of posterior 
+  summaryPosteriors[2*n+1,2] <- mean(theta0[(nSim/2+1):nSim,1,1])
+  # st dev of posterior
+  summaryPosteriors[2*n+1,3] <- sd(theta0[(nSim/2+1):nSim,1,1])
+  # quantile
+  Fn<-ecdf(theta0[(nSim/2+1):nSim,1,1])
+  summaryPosteriors[2*n+1,4] <- round(Fn(trueTheta0[1]), 2)
+  parameterNames<-c(parameterNames, paste(expression(alpha), toString(0)) )
+
+#beta0
+ # true value of the parameter
+ summaryPosteriors[2*n+2,1]<-trueTheta0[2]
+ # mean of posterior 
+ summaryPosteriors[2*n+2,2] <- mean(theta0[(nSim/2+1):nSim,2,1])
+ # st dev of posterior
+ summaryPosteriors[2*n+2,3] <- sd(theta0[(nSim/2+1):nSim,2,1])
+ # quantile
+ Fn<-ecdf(theta0[(nSim/2+1):nSim,2,1])
+ summaryPosteriors[2*n+2,4] <- round(Fn(trueTheta0[2]), 2)
+ parameterNames<-c(parameterNames, paste(expression(beta), toString(0)) )
+
+#sigma2
+ # true value of the parameter 
+ summaryPosteriors[2*n+3,1] <- trueSigma2
+ # mean of posterior 
+ summaryPosteriors[2*n+3,2] <- mean(sigma2[(nSim/2+1):nSim])
+ # st dev of posterior
+ summaryPosteriors[2*n+3,3] <- sd(sigma2[(nSim/2+1):nSim])
+ # quantile
+ Fn<-ecdf(sigma2[(nSim/2+1):nSim])
+ summaryPosteriors[2*n+3,4] <- round(Fn(trueSigma2), 2)
+ parameterNames<-c(parameterNames, paste(expression(sigma^2)) )
+ 
+# Sigma
+ # true value of the parameter 
+ summaryPosteriors[2*n+4,1] <- trueSIGMA[1,1]
+ # mean of posterior 
+ summaryPosteriors[2*n+4,2] <- mean(SIGMA[(nSim/2+1):nSim,1,1])
+ # st dev of posterior 
+ summaryPosteriors[2*n+4,3] <- sd(SIGMA[(nSim/2+1):nSim,1,1])
+ # quantile
+ Fn<-ecdf(SIGMA[(nSim/2+1):nSim,1,1])
+ summaryPosteriors[2*n+4,4] <- round(Fn(trueSIGMA[1,1]), 2)
+ parameterNames<-c(parameterNames, paste(expression(Sigma11)) )
+ 
+ # true value of the parameter 
+ summaryPosteriors[2*n+5,1] <- trueSIGMA[1,2]
+ # mean of posterior 
+ summaryPosteriors[2*n+5,2] <- mean(SIGMA[(nSim/2+1):nSim,1,2])
+ # st dev of posterior 
+ summaryPosteriors[2*n+5,3] <- sd(SIGMA[(nSim/2+1):nSim,1,2])
+ # quantile
+ Fn<-ecdf(SIGMA[(nSim/2+1):nSim,1,2])
+ summaryPosteriors[2*n+5,4] <- round(Fn(trueSIGMA[1,2]), 2)
+ parameterNames<-c(parameterNames, paste(expression(Sigma12)) )
+ 
+ # true value of the parameter 
+ summaryPosteriors[2*n+6,1] <- trueSIGMA[2,2]
+ # mean of posterior 
+ summaryPosteriors[2*n+6,2] <- mean(SIGMA[(nSim/2+1):nSim,2,2])
+ # st dev of posterior
+ summaryPosteriors[2*n+6,3] <- sd(SIGMA[(nSim/2+1):nSim,2,2])
+ # quantile
+ Fn<-ecdf(SIGMA[(nSim/2+1):nSim,2,2])
+ summaryPosteriors[2*n+6,4] <- round(Fn(trueSIGMA[2,2]), 2)
+ parameterNames<-c(parameterNames, paste(expression(Sigma22)) )
+
+rownames(summaryPosteriors) <-  parameterNames 
+  
+kable(summaryPosteriors, col.names=c('wartość rzeczywista','średnia','odchylenie standardowe','percentyl wartości rzeczywistej w rozkładzie'), row.names = TRUE, caption = 'Tabela 2. Wyniki schematu symulacyjnego Gibbsa', padding =2)
+```
+
+Powyższa tabela wskazuje na wysoką efektywność łańcucha, który jest wysymulowany przez algorytm Gibbsa.
+
+
+Następnie rozszerzamy specyfikację modelu w ten sposób, aby brał pod uwagę więcej niż jedna zmienną objaśniającą.
+
+```{r eval = TRUE, echo = TRUE}
+source("hierarchicalLinearModelForMarkDownMultipleVariables.R")
+
+
+```
+
+
